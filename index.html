@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>প্রিন্টিং প্রেস PRO</title>
+<title>শাপলা আর্ট</title>
 <link href="https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" crossorigin="anonymous">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -167,8 +167,8 @@ body{font-family:'Hind Siliguri',sans-serif;background:var(--bg);color:var(--tex
 
 <div id="login-wrap">
   <div class="login-card">
-    <div style="font-size:52px;color:var(--g1);margin-bottom:10px"><i class="fa-solid fa-print"></i></div>
-    <h2 id="login-title" style="margin-bottom:4px">প্রিন্টিং প্রেস PRO</h2>
+    <div id="login-logo-wrap" style="margin-bottom:10px;display:flex;align-items:center;justify-content:center"><i class="fa-solid fa-print" id="login-logo-icon" style="font-size:52px;color:var(--g1)"></i><img id="login-logo-img" src="" style="display:none;width:90px;height:90px;border-radius:16px;object-fit:cover"></div>
+    <h2 id="login-title" style="margin-bottom:4px">শাপলা আর্ট</h2>
     <p style="color:#aaa;font-size:13px;margin-bottom:4px">পিন দিয়ে লগইন করুন</p>
     <input type="password" id="pin-input" class="login-input" placeholder="••••" maxlength="4" onkeydown="if(event.key==='Enter')handleLogin()">
     <button class="login-btn" onclick="handleLogin()"><i class="fa-solid fa-lock"></i> লগইন করুন</button>
@@ -180,8 +180,8 @@ body{font-family:'Hind Siliguri',sans-serif;background:var(--bg);color:var(--tex
   <div class="topbar">
     <div class="topbar-inner">
       <div class="brand" onclick="goPage('dash',document.querySelector('.np'))">
-        <i class="fa-solid fa-print"></i>
-        <span id="brand-name">PRESS PRO</span>
+        <i class="fa-solid fa-print" id="topbar-logo-icon"></i><img id="topbar-logo-img" src="" style="display:none;width:28px;height:28px;border-radius:6px;object-fit:cover">
+        <span id="brand-name">শাপলা আর্ট</span>
         <span class="sync-dot"></span>
       </div>
       <div class="nav-strip">
@@ -641,6 +641,11 @@ async function ss(k,v){settings[k]=v;await FS.fsSetSettings({[k]:v});}
 waitForFirebase(async function(){
   document.getElementById('fb-loading').style.display='none';
   settings=await FS.fsGetSettings();
+  if(!settings['press_biz_name']){
+    var defaults={'press_biz_name':'শাপলা আর্ট','press_biz_addr':'তিলনা রোড, মন্ডল মোড়, ফৌজিয়া প্লাজা, সাপাহার নওগাঁ','press_biz_phone':'+8801791835232'};
+    await FS.fsSetSettings(defaults);
+    settings=Object.assign({},settings,defaults);
+  }
   document.getElementById('login-wrap').classList.add('show');
 });
 
@@ -885,15 +890,20 @@ function filterIncome(f,btn){currentFilter=f;document.querySelectorAll('#page-in
 
 function renderIncome(){
   var q=(document.getElementById('income-search').value||'').toLowerCase();
-  var total=income.reduce(function(s,x){return s+(x.total||0);},0);
-  var adv=income.reduce(function(s,x){return s+(x.advance||0);},0);
-  var due=income.reduce(function(s,x){return s+(x.due||0);},0);
-  var pc=income.filter(function(x){return x.status==='Paid';}).length;
+  // বাগ ৯ ঠিক: এই মাসের ডেটা আলাদা করা
+  var nowYM=new Date().getFullYear()+'-'+String(new Date().getMonth()+1).padStart(2,'0');
+  var thisMonth=income.filter(function(x){return getMK(x.date)===nowYM;});
+  var total=thisMonth.reduce(function(s,x){return s+(x.total||0);},0);
+  var adv=thisMonth.reduce(function(s,x){return s+(x.advance||0);},0);
+  var due=thisMonth.reduce(function(s,x){return s+(x.due||0);},0);
+  var pc=thisMonth.filter(function(x){return x.status==='Paid';}).length;
+  var allDue=income.reduce(function(s,x){return s+(x.due||0);},0); // সব সময়ের বকেয়া
   document.getElementById('income-summary').innerHTML=
-    '<div class="sum-card"><div class="lbl">মোট বিল</div><div class="val" style="color:var(--g1)">৳'+fmt(total)+'</div></div>'+
-    '<div class="sum-card"><div class="lbl">আদায়</div><div class="val" style="color:var(--green)">৳'+fmt(adv)+'</div></div>'+
-    '<div class="sum-card"><div class="lbl">বকেয়া</div><div class="val" style="color:var(--red)">৳'+fmt(due)+'</div></div>'+
-    '<div class="sum-card"><div class="lbl">Paid</div><div class="val" style="color:var(--green)">'+pc+'টি</div></div>';
+    '<div class="sum-card"><div class="lbl">এই মাসের বিল</div><div class="val" style="color:var(--g1)">৳'+fmt(total)+'</div></div>'+
+    '<div class="sum-card"><div class="lbl">এই মাসে আদায়</div><div class="val" style="color:var(--green)">৳'+fmt(adv)+'</div></div>'+
+    '<div class="sum-card"><div class="lbl">এই মাসের বকেয়া</div><div class="val" style="color:var(--red)">৳'+fmt(due)+'</div></div>'+
+    '<div class="sum-card"><div class="lbl">মোট বকেয়া (সব)</div><div class="val" style="color:var(--amber)">৳'+fmt(allDue)+'</div></div>'+
+    '<div class="sum-card"><div class="lbl">এই মাসে Paid</div><div class="val" style="color:var(--green)">'+pc+'টি</div></div>';
   var list=[...income].reverse().filter(function(r){
     if(currentFilter!=='all'&&r.status!==currentFilter)return false;
     if(q&&!(r.customer.toLowerCase().includes(q)||r.work.toLowerCase().includes(q)))return false;
@@ -969,7 +979,8 @@ async function submitCollectDue(){
   var r=income.find(function(x){return x.id===id;});
   var amt=parseFloat(document.getElementById('cd-amount').value)||0;
   if(!r)return;if(amt<=0)return alert('পরিমাণ লিখুন!');if(amt>r.due+0.01)return alert('বকেয়ার চেয়ে বেশি নয়!');
-  r.advance+=amt;r.due=parseFloat((r.due-amt).toFixed(2));
+  // বাগ ২ ঠিক: দুটো মানই toFixed(2) দিয়ে round করা
+  r.advance=parseFloat((r.advance+amt).toFixed(2));r.due=parseFloat((r.due-amt).toFixed(2));
   if(r.due<=0){r.due=0;r.status='Paid';}else r.status='Partial';
   try{await FS.fsUpdate('income',id,{advance:r.advance,due:r.due,status:r.status});closeModal('m-collect');renderIncome();renderDashboard();updateDueBadge();showToast('জমা সফল!');}
   catch(e){alert('সমস্যা: '+e.message);}
@@ -978,13 +989,22 @@ async function submitCollectDue(){
 // ══════════════════════════════
 // WHATSAPP
 // ══════════════════════════════
+// বাগ ৪ ঠিক: WhatsApp নম্বর পরিষ্কার করার helper
+function cleanPhone(phone){
+  if(!phone)return '';
+  var p=phone.replace(/[\s\-()]/g,''); // স্পেস, ড্যাশ, ব্র্যাকেট সরাও
+  if(p.startsWith('01'))p='880'+p.slice(1); // 01XXXXXXXXX → 88001XXXXXXXX
+  if(p.startsWith('+'))p=p.slice(1); // +880... → 880...
+  return p;
+}
 function previewWhatsApp(id){
   var r=income.find(function(x){return x.id===id;});
   var c=customers.find(function(x){return x.id===r.custID;});
-  var bizName=gs('press_biz_name','প্রিন্টিং প্রেস PRO');
+  var bizName=gs('press_biz_name','শাপলা আর্ট');
   var msg='আসসালামু আলাইকুম '+r.customer+',\n\n*'+bizName+'* — বিল বিবরণ\n'+'━'.repeat(20)+'\nমেমো: #'+r.id.toUpperCase()+'\nতারিখ: '+r.date+'\nকাজ: '+r.work+'\n'+'━'.repeat(20)+'\nমোট বিল: ৳'+fmt(r.total)+'\nজমা: ৳'+fmt(r.advance)+'\n'+(r.due>0?'বাকি: ৳'+fmt(r.due):'সম্পূর্ণ পরিশোধ')+'\nস্ট্যাটাস: *'+r.status.toUpperCase()+'*\n'+'━'.repeat(20)+'\nধন্যবাদ';
   document.getElementById('wa-preview-text').textContent=msg;
-  if(c&&c.phone){document.getElementById('wa-send-btn').onclick=function(){window.open('https://wa.me/'+c.phone+'?text='+encodeURIComponent(msg),'_blank');closeModal('m-wa');};document.getElementById('wa-send-btn').disabled=false;document.getElementById('wa-send-btn').style.opacity='1';}
+  var waNum=c?cleanPhone(c.phone):'';
+  if(waNum){document.getElementById('wa-send-btn').onclick=function(){window.open('https://wa.me/'+waNum+'?text='+encodeURIComponent(msg),'_blank');closeModal('m-wa');};document.getElementById('wa-send-btn').disabled=false;document.getElementById('wa-send-btn').style.opacity='1';}
   else{document.getElementById('wa-send-btn').disabled=true;document.getElementById('wa-send-btn').style.opacity='.4';}
   openModal('m-wa');
 }
@@ -1098,31 +1118,34 @@ async function saveCustomer(){
   var name=document.getElementById('c-name').value.trim();
   var phone=document.getElementById('c-phone').value.trim();
   if(!name)return alert('নাম দিন!');if(!phone)return alert('ফোন নম্বর দিন!');
+
+  // বাগ ৮ ঠিক: ডুপ্লিকেট ফোন নম্বর চেক
+  var dupPhone=customers.find(function(c){return c.phone===phone&&c.id!==editId;});
+  if(dupPhone)return alert('এই ফোন নম্বরটি ইতিমধ্যে "'+dupPhone.name+'" নামে আছে!');
+
   try{
     if(editId){
       await FS.fsUpdate('customers',editId,{name:name,phone:phone});
       var idx=customers.findIndex(function(x){return x.id===editId;});
       if(idx>-1)customers[idx]=Object.assign({id:editId},{name:name,phone:phone});
-      
-      // আয়ের হিসাবের নামও আপডেট করা
-      income.forEach(async function(item) {
-        if(item.custID === editId) {
-          item.customer = name; 
-          await FS.fsUpdate('income', item.id, { customer: name });
-        }
-      });
-      showToast('কাস্টমার ও আয়ের রেকর্ডে নাম আপডেট হয়েছে!');
+
+      // বাগ ৩ ঠিক: forEach+async এর বদলে for loop ব্যবহার
+      var toUpdate=income.filter(function(item){return item.custID===editId;});
+      for(var i=0;i<toUpdate.length;i++){
+        toUpdate[i].customer=name;
+        await FS.fsUpdate('income',toUpdate[i].id,{customer:name});
+      }
+      showToast('কাস্টমার ও '+toUpdate.length+' টি আয়ের রেকর্ড আপডেট হয়েছে!');
     } else {
       var saved=await FS.fsAdd('customers',{name:name,phone:phone});
       customers.push(saved);
-      showToast('কাস্টমার সেভ হয়েছে!');
+      showToast('কাস্টমার সেভ হয়েছে!');
     }
     closeCustModal();
     renderCustomers();
-    if(typeof renderIncome === "function") renderIncome();
+    renderIncome();
   }catch(e){alert('সমস্যা: '+e.message);}
 }
-
 function renderCustomers(){
   var q=(document.getElementById('cust-search').value||'').toLowerCase();
   var list=customers.filter(function(c){return !q||c.name.toLowerCase().includes(q)||(c.phone||'').includes(q);});
@@ -1155,7 +1178,7 @@ function openCustProfile(id){
   var totalBill=cIncome.reduce(function(s,x){return s+(x.total||0);},0);
   var totalAdv=cIncome.reduce(function(s,x){return s+(x.advance||0);},0);
   var totalDue=cIncome.reduce(function(s,x){return s+(x.due||0);},0);
-  var rows=cIncome.reverse().map(function(r){
+  var rows=[...cIncome].reverse().map(function(r){ // বাগ ৩ ঠিক: spread দিয়ে copy
     return '<tr><td style="padding:9px 12px">'+r.date+'</td><td style="padding:9px 12px">'+r.work+'</td>'
       +'<td style="padding:9px 12px;text-align:right">৳'+fmt(r.total)+'</td>'
       +'<td style="padding:9px 12px;text-align:right;color:#059669">৳'+fmt(r.advance)+'</td>'
@@ -1399,7 +1422,19 @@ async function _doDelete(type,id){
   try{
     if(type==='inc'){await FS.fsDelete('income',id);income=income.filter(function(x){return x.id!==id;});renderIncome();renderDashboard();updateDueBadge();}
     if(type==='exp'){await FS.fsDelete('expense',id);expense=expense.filter(function(x){return x.id!==id;});renderExpense();renderDashboard();}
-    if(type==='cust'){await FS.fsDelete('customers',id);customers=customers.filter(function(x){return x.id!==id;});renderCustomers();}
+    if(type==='cust'){
+      // বাগ ১০ ঠিক: কাস্টমারের সাথে সংশ্লিষ্ট income রেকর্ডও মুছে ফেলা
+      var custIncome=income.filter(function(x){return x.custID===id;});
+      if(custIncome.length>0){
+        var ok=confirm('"'+( customers.find(function(c){return c.id===id;})||{} ).name+'" কাস্টমারের '+custIncome.length+' টি আয়ের রেকর্ডও আছে। সব মুছে ফেলবেন?');
+        if(!ok)return;
+        for(var i=0;i<custIncome.length;i++){await FS.fsDelete('income',custIncome[i].id);}
+        income=income.filter(function(x){return x.custID!==id;});
+      }
+      await FS.fsDelete('customers',id);
+      customers=customers.filter(function(x){return x.id!==id;});
+      renderCustomers();renderIncome();renderDashboard();updateDueBadge();
+    }
     if(type==='product'){await FS.fsDelete('products',id);products=products.filter(function(x){return x.id!==id;});renderStock();updateLowStockBadge();}
     showToast('মুছে ফেলা হয়েছে।');
   }catch(e){alert('মুছতে সমস্যা: '+e.message);}
@@ -1412,7 +1447,7 @@ function showInvoice(id){
   var r=income.find(function(x){return x.id===id;});if(!r)return;
   var sc=r.status==='Paid'?'#059669':r.status==='Partial'?'#d97706':'#dc2626';
   var pct=r.total>0?Math.min(100,(r.advance/r.total)*100):0;
-  var bizName=gs('press_biz_name','প্রিন্টিং প্রেস PRO');
+  var bizName=gs('press_biz_name','শাপলা আর্ট');
   var bizAddr=gs('press_biz_addr','');var bizPhone=gs('press_biz_phone','');var bizLogo=gs('press_logo','');
   document.getElementById('inv-body').innerHTML=
     '<div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px">'
@@ -1446,7 +1481,7 @@ function openPrintReport(){
   var due=mI.reduce(function(s,x){return s+(x.due||0);},0);
   var exp=mE.reduce(function(s,x){return s+(x.amount||0);},0);
   var prof=adv-exp;
-  var bizName=gs('press_biz_name','প্রিন্টিং প্রেস PRO');
+  var bizName=gs('press_biz_name','শাপলা আর্ট');
   var rows=mI.map(function(r){
     return '<tr><td style="padding:8px 10px;border-bottom:1px solid #f0f0f0">'+r.date+'</td>'
       +'<td style="padding:8px 10px;border-bottom:1px solid #f0f0f0">'+r.customer+'</td>'
@@ -1541,7 +1576,11 @@ function renderYearly(){
     +'<div style="display:flex;justify-content:space-between;padding:9px;background:#f0f4ff;border-radius:7px"><span style="font-size:13px;color:#666"><i class="fa-solid fa-circle-check" style="color:#059669;margin-right:3px"></i>Paid এন্ট্রি</span><strong style="color:#059669">'+pC+' টি</strong></div>'
     +'<div style="display:flex;justify-content:space-between;padding:9px;background:#fef3c7;border-radius:7px"><span style="font-size:13px;color:#666"><i class="fa-solid fa-circle-half-stroke" style="color:#d97706;margin-right:3px"></i>Partial এন্ট্রি</span><strong style="color:#d97706">'+ptC+' টি</strong></div>'
     +'<div style="display:flex;justify-content:space-between;padding:9px;background:#fee2e2;border-radius:7px"><span style="font-size:13px;color:#666"><i class="fa-solid fa-circle-xmark" style="color:#dc2626;margin-right:3px"></i>Due এন্ট্রি</span><strong style="color:#dc2626">'+dC+' টি</strong></div>'
-    +'<div style="display:flex;justify-content:space-between;padding:9px;background:#d1fae5;border-radius:7px"><span style="font-size:13px;color:#666"><i class="fa-solid fa-arrow-trend-up" style="color:#059669;margin-right:3px"></i>মাসিক গড়</span><strong style="color:#059669">৳'+fmt(Math.round(yAdv/12))+'</strong></div>'
+    +(function(){
+    // বাগ ৬ ঠিক: শুধু ডেটা আছে এমন মাস গুণে ভাগ
+    var activeMths=monthData.filter(function(m){return m.adv>0||m.bill>0;}).length||1;
+    return '<div style="display:flex;justify-content:space-between;padding:9px;background:#d1fae5;border-radius:7px"><span style="font-size:13px;color:#666"><i class="fa-solid fa-arrow-trend-up" style="color:#059669;margin-right:3px"></i>মাসিক গড় ('+activeMths+' মাস)</span><strong style="color:#059669">৳'+fmt(Math.round(yAdv/activeMths))+'</strong></div>';
+  })()
     +(bestM&&bestM.adv>0?'<div style="display:flex;justify-content:space-between;padding:9px;background:#f0f4ff;border-radius:7px"><span style="font-size:13px;color:#666"><i class="fa-solid fa-trophy" style="color:#d97706;margin-right:3px"></i>সেরা মাস</span><strong style="color:#6366f1">'+bestM.name+' (৳'+fmt(bestM.adv)+')</strong></div>':'')
     +'</div>';
 }
@@ -1609,7 +1648,7 @@ function startBroadcast(channel){
   log.innerHTML='<div style="background:'+(isWa?'#e7fde8':'#ede9fe')+';border-radius:8px;padding:9px 12px;margin-bottom:10px;font-size:13px;color:'+(isWa?'#065f46':'#4c1d95')+';font-weight:600">'+icon+' প্রতিটি বাটনে ক্লিক করুন — একে একে পাঠান। মোট: '+selected.length+' জন</div>'
   +selected.map(function(c,idx){
     var personalMsg=msg.replace(/\{নাম\}/g,c.name);
-    var phone=c.phone.replace(/[^0-9+]/g,'');
+    var phone=cleanPhone(c.phone); // বাগ ১ ঠিক: cleanPhone ব্যবহার
     var url=isWa?'https://wa.me/'+phone+'?text='+encodeURIComponent(personalMsg):'sms:'+phone+'?body='+encodeURIComponent(personalMsg);
     return '<div id="bc-card-'+idx+'" style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:#fff;border:2px solid #e0e7ff;border-radius:10px;margin-bottom:7px;transition:all .2s">'
       +'<div style="width:28px;height:28px;border-radius:50%;background:#f0f4ff;display:flex;align-items:center;justify-content:center;font-weight:900;color:var(--g1);font-size:12px;flex-shrink:0">'+(idx+1)+'</div>'
@@ -1633,7 +1672,15 @@ function bcMarkSent(idx){
 // ══════════════════════════════
 // SETTINGS
 // ══════════════════════════════
-function applyBizProfile(){var name=gs('press_biz_name','');document.getElementById('brand-name').textContent=name||'PRESS PRO';document.getElementById('login-title').textContent=name||'প্রিন্টিং প্রেস PRO';}
+function applyBizProfile(){
+  var name=gs('press_biz_name','');
+  var logo=gs('press_logo','');
+  document.getElementById('brand-name').textContent=name||'শাপলা আর্ট';
+  document.getElementById('login-title').textContent=name||'শাপলা আর্ট';
+  function applyLogo(iconId,imgId){var ic=document.getElementById(iconId),im=document.getElementById(imgId);if(!ic||!im)return;if(logo){im.src=logo;im.style.display='block';ic.style.display='none';}else{im.style.display='none';ic.style.display='';}}
+  applyLogo('login-logo-icon','login-logo-img');
+  applyLogo('topbar-logo-icon','topbar-logo-img');
+}
 function loadSettingsPage(){
   document.getElementById('biz-name').value=gs('press_biz_name','');
   document.getElementById('biz-address').value=gs('press_biz_addr','');
@@ -1658,9 +1705,17 @@ async function changePin(){
   if(np===op)return show('আগেরটার মতো হবে না!','#d97706');
   await ss('press_pin',np);['old-pin','new-pin','confirm-pin'].forEach(function(id){document.getElementById(id).value='';});show('পিন পরিবর্তন হয়েছে!','#059669');setTimeout(function(){msg.style.display='none';},3000);
 }
-function exportBackup(){
-  var data={income:income,expense:expense,customers:customers,products:products,stockHistory:stockHistory,settings:settings,exportedAt:new Date().toISOString()};
-  var a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'}));a.download='press-pro-backup-'+new Date().toISOString().slice(0,10)+'.json';a.click();showToast('Backup ডাউনলোড হচ্ছে...');
+async function exportBackup(){
+  // বাগ ১২ ঠিক: Firestore থেকে সর্বশেষ settings (লোগোসহ) এনে backup-এ রাখা
+  var latestSettings=await FS.fsGetSettings();
+  var data={income:income,expense:expense,customers:customers,products:products,stockHistory:stockHistory,settings:latestSettings,exportedAt:new Date().toISOString(),version:'2.0'};
+  var json=JSON.stringify(data,null,2);
+  var sizeKB=Math.round(new Blob([json]).size/1024);
+  var a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([json],{type:'application/json'}));
+  a.download='shapla-art-backup-'+new Date().toISOString().slice(0,10)+'.json';
+  a.click();
+  showToast('Backup ডাউনলোড হচ্ছে... ('+sizeKB+'KB)');
 }
 async function importBackup(e){
   var file=e.target.files[0];if(!file)return;if(!confirm('Backup রিস্টোর করলে সব ডেটা বদলে যাবে। নিশ্চিত?'))return;
@@ -1698,6 +1753,3 @@ function fmt(n){return(n||0).toLocaleString('en-IN');}
 </script>
 </body>
 </html>
-
-
-

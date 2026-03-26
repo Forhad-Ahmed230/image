@@ -646,6 +646,7 @@ waitForFirebase(async function(){
     await FS.fsSetSettings(defaults);
     settings=Object.assign({},settings,defaults);
   }
+  applyBizProfile(); // লগইন স্ক্রিনে লোগো ও নাম দেখানোর জন্য
   document.getElementById('login-wrap').classList.add('show');
 });
 
@@ -914,7 +915,7 @@ function renderIncome(){
     var bc=r.status==='Paid'?'paid':r.status==='Partial'?'partial':'due';
     var badgeCls=r.status==='Paid'?'bg-g':r.status==='Partial'?'bg-a':'bg-r';
     var dueCol=r.due>0?'#dc2626':'#059669';
-    var collectBtn=r.due>0?'<button class="btn btn-pay btn-sm" onclick="openCollectDue(\''+r.id+'\')"><i class="fa-solid fa-hand-holding-dollar"></i> জমা</button>':'';
+    var collectBtn=r.due>0?'<button class="btn btn-pay btn-sm" title="বকেয়া জমা নিন" onclick="openCollectDue(\''+r.id+'\')"><i class="fa-solid fa-hand-holding-dollar"></i></button>':'';
     return '<div class="ec">'
       +'<div class="ec-main"><strong>'+r.customer+'</strong><span class="badge '+badgeCls+'" style="margin-left:7px">'+r.status+'</span><br>'
       +'<small style="color:#aaa">'+r.work+' · '+r.date+'</small>'
@@ -1094,8 +1095,8 @@ function renderDueTracker(){
       +'<div style="text-align:center;min-width:60px"><div style="font-size:18px;font-weight:900;color:'+ageColor+'">'+r.ageDays+'</div><div style="font-size:11px;color:#888">দিন আগে</div></div>'
       +'<div style="text-align:right;min-width:80px"><div style="font-weight:900;font-size:15px;color:#dc2626">৳'+fmt(r.due)+'</div><div style="font-size:11px;color:#888">বকেয়া</div></div>'
       +'<div style="display:flex;flex-direction:column;gap:5px">'
-      +'<button class="btn btn-pay btn-sm" onclick="openCollectDue(\''+r.id+'\')"><i class="fa-solid fa-hand-holding-dollar"></i> জমা</button>'
-      +'<button class="btn btn-wa btn-sm" onclick="previewWhatsApp(\''+r.id+'\')"><i class="fa-brands fa-whatsapp"></i> WA</button>'
+      +'<button class="btn btn-pay btn-sm" title="বকেয়া জমা নিন" onclick="openCollectDue(\''+r.id+'\')"><i class="fa-solid fa-hand-holding-dollar"></i></button>'
+      +'<button class="btn btn-wa btn-sm" title="WhatsApp পাঠান" onclick="previewWhatsApp(\''+r.id+'\')"><i class="fa-brands fa-whatsapp"></i></button>'
       +'</div></div>';
   }).join(''):'<div style="text-align:center;padding:40px;color:#ccc"><i class="fa-solid fa-circle-check" style="font-size:48px;color:#059669;opacity:.4"></i><p style="margin-top:12px;font-size:16px">কোনো বকেয়া নেই!</p></div>';
 }

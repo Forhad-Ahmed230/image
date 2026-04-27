@@ -1,0 +1,1357 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Super Admin Panel — Shapla SaaS</title>
+<link href="https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" crossorigin="anonymous">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+
+<!-- Firebase -->
+<script type="module">
+import { initializeApp }        from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getFirestore, collection, doc, getDocs, getDoc, setDoc, updateDoc, deleteDoc, query, orderBy } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+
+// ╔══════════════════════════════════════════╗
+// ║  CONFIG — আপনার Firebase তথ্য এখানে     ║
+// ╚══════════════════════════════════════════╝
+const FB_CONFIG = {
+  apiKey: "AIzaSyA4SZRe5NdBhGgWWh5JyhwEA46GOYDevMg",
+  authDomain: "press-a0a7e.firebaseapp.com",
+  projectId: "press-a0a7e",
+  storageBucket: "press-a0a7e.firebasestorage.app",
+  messagingSenderId: "32944064021",
+  appId: "1:32944064021:web:3ae916a068bafe4adf301c"
+};
+
+// ╔══════════════════════════════════════════╗
+// ║  ADMIN EMAILS — শুধু এরাই ঢুকতে পারবে  ║
+// ╚══════════════════════════════════════════╝
+const ADMIN_EMAILS = ['habibak2024@gmail.com'];
+
+const app  = initializeApp(FB_CONFIG);
+const db   = getFirestore(app);
+const auth = getAuth(app);
+
+// ── Firestore helpers ──
+async function dbGetAll(col){
+  const s = await getDocs(collection(db, col));
+  return s.docs.map(d => ({id: d.id, ...d.data()}));
+}
+async function dbSet(col, id, data, merge=true){
+  await setDoc(doc(db, col, id), data, {merge});
+}
+async function dbUpdate(col, id, data){
+  await updateDoc(doc(db, col, id), data);
+}
+async function dbGetDoc(col, id){
+  const d = await getDoc(doc(db, col, id));
+  return d.exists() ? {id: d.id, ...d.data()} : null;
+}
+
+// ── Tenant update — admin_writes collection দিয়ে ──
+// Firestore rules-এ admin email check করা হয়
+async function dbSetTenant(uid, subData){
+  await setDoc(doc(db, 'tenants_registry', uid), subData, {merge: true});
+  await setDoc(doc(db, `tenants/${uid}/subscription`, 'main'), subData, {merge: true});
+}
+
+async function dbDelete(col, id){
+  await deleteDoc(doc(db, col, id));
+}
+
+// ── Auth helpers ──
+async function adminLogin(email, pass){ await signInWithEmailAndPassword(auth, email, pass); }
+async function adminLogout(){ await signOut(auth); }
+
+// ── Global exports ──
+window._A = {
+  FB_CONFIG, ADMIN_EMAILS, db, auth,
+  dbGetAll, dbSet, dbUpdate, dbGetDoc, dbSetTenant, dbDelete,
+  adminLogin, adminLogout,
+  getCurrentUser: () => auth.currentUser
+};
+
+// ── Auth state listener ──
+onAuthStateChanged(auth, user => {
+  window._aUser = user || null;
+  window._aReady = true;
+  document.dispatchEvent(new CustomEvent('a-ready', {detail: {user}}));
+});
+</script>
+
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --g1:#6366f1;--g2:#8b5cf6;--g3:#ec4899;
+  --green:#059669;--red:#dc2626;--amber:#d97706;--sky:#0ea5e9;
+  --sidebar-w:240px;
+  --bg:#f0f4ff;--card:#fff;--border:#e0e7ff;
+  --text:#1e1b4b;--muted:#6b7280;
+  --r:12px;--shadow:0 4px 16px rgba(99,102,241,.08);
+}
+
+/* ── Loading ── */
+#a-loading{position:fixed;inset:0;z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;background:linear-gradient(135deg,var(--g1),var(--g3))}
+.spinner{width:44px;height:44px;border:4px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .8s linear infinite;margin-bottom:14px}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ── Auth Screen ── */
+#a-auth{position:fixed;inset:0;z-index:9999;display:none;align-items:center;justify-content:center;background:linear-gradient(135deg,var(--g1),var(--g3))}
+#a-auth.show{display:flex}
+.auth-box{background:#fff;border-radius:24px;padding:40px 36px;width:360px;box-shadow:0 24px 60px rgba(0,0,0,.2);text-align:center}
+.auth-logo{font-size:48px;color:var(--g1);margin-bottom:12px}
+.auth-title{font-size:20px;font-weight:900;color:var(--text);margin-bottom:4px}
+.auth-sub{font-size:13px;color:var(--muted);margin-bottom:24px}
+.a-input{width:100%;padding:12px 14px;border:2px solid #e0e7ff;border-radius:10px;font-size:14px;font-family:inherit;outline:none;margin-bottom:12px;transition:border .2s}
+.a-input:focus{border-color:var(--g1)}
+.a-btn{width:100%;padding:13px;background:linear-gradient(135deg,var(--g1),var(--g2));color:#fff;border:none;border-radius:10px;font-weight:800;font-size:15px;cursor:pointer;font-family:inherit;transition:all .2s}
+.a-btn:hover{opacity:.92;transform:translateY(-1px)}
+.a-btn:disabled{opacity:.6;cursor:not-allowed;transform:none}
+.auth-err{display:none;background:#fee2e2;color:#dc2626;padding:9px 12px;border-radius:8px;font-size:12px;font-weight:600;margin-bottom:12px;text-align:left}
+
+/* ── Access Denied ── */
+#a-denied{position:fixed;inset:0;z-index:9998;display:none;align-items:center;justify-content:center;background:linear-gradient(135deg,#dc2626,#f97316)}
+#a-denied.show{display:flex}
+.denied-box{background:#fff;border-radius:24px;padding:40px;text-align:center;max-width:400px;width:95%}
+
+/* ── Layout ── */
+#a-app{display:none;min-height:100vh;background:var(--bg);font-family:'Hind Siliguri',sans-serif}
+
+/* ── Sidebar ── */
+.sidebar{position:fixed;left:0;top:0;bottom:0;width:var(--sidebar-w);background:linear-gradient(180deg,#1e1b4b 0%,#312e81 100%);z-index:500;display:flex;flex-direction:column;transition:transform .3s}
+.sidebar-logo{padding:24px 20px 20px;border-bottom:1px solid rgba(255,255,255,.1)}
+.sidebar-logo h2{color:#fff;font-size:16px;font-weight:900;display:flex;align-items:center;gap:9px}
+.sidebar-logo p{color:rgba(255,255,255,.5);font-size:11px;margin-top:4px;padding-left:29px}
+.sidebar-nav{flex:1;padding:12px 0;overflow-y:auto}
+.nav-item{display:flex;align-items:center;gap:11px;padding:11px 20px;color:rgba(255,255,255,.65);cursor:pointer;transition:all .2s;font-size:13px;font-weight:600;border:none;background:none;width:100%;font-family:inherit;text-align:left;position:relative}
+.nav-item:hover{background:rgba(255,255,255,.08);color:#fff}
+.nav-item.active{background:linear-gradient(90deg,rgba(99,102,241,.4),rgba(99,102,241,.1));color:#fff;border-right:3px solid var(--g1)}
+.nav-item i{width:18px;text-align:center;font-size:14px}
+.nav-badge{position:absolute;right:14px;background:#dc2626;color:#fff;border-radius:99px;font-size:9px;font-weight:800;padding:2px 6px;min-width:18px;text-align:center}
+.sidebar-footer{padding:16px 20px;border-top:1px solid rgba(255,255,255,.1)}
+.admin-email{color:rgba(255,255,255,.5);font-size:11px;word-break:break-all;margin-bottom:10px}
+.logout-btn{width:100%;padding:9px;background:rgba(220,38,38,.2);color:#fca5a5;border:1px solid rgba(220,38,38,.3);border-radius:8px;cursor:pointer;font-size:12px;font-weight:700;font-family:inherit;transition:all .2s;display:flex;align-items:center;justify-content:center;gap:6px}
+.logout-btn:hover{background:rgba(220,38,38,.35);color:#fff}
+
+/* ── Main Content ── */
+.main{margin-left:var(--sidebar-w);min-height:100vh;display:flex;flex-direction:column}
+.topbar{background:#fff;border-bottom:2px solid var(--border);padding:0 24px;height:62px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;box-shadow:0 2px 8px rgba(99,102,241,.06)}
+.topbar h1{font-size:17px;font-weight:900;color:var(--text);display:flex;align-items:center;gap:9px}
+.topbar-right{display:flex;align-items:center;gap:10px}
+.refresh-btn{padding:7px 14px;background:var(--border);color:var(--g1);border:none;border-radius:8px;cursor:pointer;font-size:12px;font-weight:700;font-family:inherit;display:flex;align-items:center;gap:6px;transition:all .2s}
+.refresh-btn:hover{background:var(--g1);color:#fff}
+.online-dot{width:8px;height:8px;background:#059669;border-radius:50%;animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+.content{flex:1;padding:24px}
+
+/* ── Pages ── */
+.page{display:none}
+.page.active{display:block}
+
+/* ── Cards ── */
+.card{background:var(--card);border-radius:var(--r);padding:20px;border:1px solid var(--border);box-shadow:var(--shadow)}
+.card h3{font-size:14px;font-weight:800;color:var(--text);display:flex;align-items:center;gap:8px;margin-bottom:16px}
+
+/* ── Stat Grid ── */
+.stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px;margin-bottom:22px}
+.stat-card{border-radius:var(--r);padding:18px;color:#fff;position:relative;overflow:hidden}
+.stat-card::after{content:'';position:absolute;right:-10px;bottom:-10px;width:70px;height:70px;border-radius:50%;background:rgba(255,255,255,.08)}
+.stat-card .sc-icon{font-size:22px;opacity:.85;margin-bottom:8px}
+.stat-card h4{font-size:10px;text-transform:uppercase;opacity:.75;font-weight:700;letter-spacing:.5px}
+.stat-card h2{font-size:26px;font-weight:900;margin-top:3px;line-height:1}
+.stat-card small{font-size:11px;opacity:.7;display:block;margin-top:4px}
+.sc-purple{background:linear-gradient(135deg,#6366f1,#8b5cf6)}
+.sc-green{background:linear-gradient(135deg,#059669,#10b981)}
+.sc-amber{background:linear-gradient(135deg,#d97706,#fbbf24)}
+.sc-red{background:linear-gradient(135deg,#dc2626,#f87171)}
+.sc-sky{background:linear-gradient(135deg,#0ea5e9,#38bdf8)}
+.sc-pink{background:linear-gradient(135deg,#ec4899,#f97316)}
+.sc-dark{background:linear-gradient(135deg,#374151,#6b7280)}
+
+/* ── Table ── */
+.tbl-wrap{overflow-x:auto;border-radius:var(--r)}
+table{width:100%;border-collapse:collapse;font-size:13px}
+thead tr{background:#f8f0ff}
+thead th{padding:11px 14px;text-align:left;font-size:11px;font-weight:800;text-transform:uppercase;color:var(--muted);white-space:nowrap}
+tbody td{padding:11px 14px;border-bottom:1px solid #f5f5f5;vertical-align:middle}
+tbody tr:hover td{background:#fafafa}
+tbody tr:last-child td{border-bottom:none}
+
+/* ── Status Badge ── */
+.badge{padding:3px 10px;border-radius:99px;font-size:10px;font-weight:800;text-transform:uppercase;white-space:nowrap}
+.b-active{background:#d1fae5;color:#065f46}
+.b-trial{background:#fef3c7;color:#92400e}
+.b-pending{background:#e0e7ff;color:#3730a3}
+.b-expired{background:#fee2e2;color:#991b1b}
+.b-suspended{background:#f3f4f6;color:#4b5563}
+
+/* ── Expiry indicator ── */
+.exp-safe{color:#059669;font-weight:700}
+.exp-warn{color:#d97706;font-weight:700}
+.exp-danger{color:#dc2626;font-weight:700}
+
+/* ── Filter bar ── */
+.filter-bar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+.fbtn{padding:6px 14px;border-radius:20px;border:2px solid var(--border);background:#fff;cursor:pointer;font-size:12px;font-weight:700;font-family:inherit;transition:all .2s;display:flex;align-items:center;gap:5px}
+.fbtn.active{background:var(--g1);color:#fff;border-color:var(--g1)}
+.fbtn:hover:not(.active){background:#f0f4ff}
+
+/* ── Search ── */
+.search-box{position:relative;margin-bottom:14px}
+.search-box input{width:100%;padding:10px 12px 10px 38px;border:2px solid var(--border);border-radius:10px;font-size:13px;font-family:inherit;outline:none;transition:border .2s}
+.search-box input:focus{border-color:var(--g1)}
+.search-box i{position:absolute;left:12px;top:50%;transform:translateY(-50%);color:#aaa;font-size:14px}
+
+/* ── Action Buttons ── */
+.act-btn{padding:5px 10px;border-radius:7px;border:none;cursor:pointer;font-size:11px;font-weight:700;font-family:inherit;display:inline-flex;align-items:center;gap:4px;transition:all .15s}
+.act-btn:active{transform:scale(.94)}
+.ab-green{background:#d1fae5;color:#065f46}
+.ab-green:hover{background:#059669;color:#fff}
+.ab-red{background:#fee2e2;color:#991b1b}
+.ab-red:hover{background:#dc2626;color:#fff}
+.ab-blue{background:#e0e7ff;color:#3730a3}
+.ab-blue:hover{background:var(--g1);color:#fff}
+.ab-amber{background:#fef3c7;color:#92400e}
+.ab-amber:hover{background:#d97706;color:#fff}
+
+/* ── Overlay / Modal ── */
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:2000;display:none;align-items:center;justify-content:center;backdrop-filter:blur(4px)}
+.overlay.open{display:flex}
+.modal{background:#fff;padding:26px;border-radius:18px;width:95%;max-width:460px;max-height:92vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.2)}
+.modal h3{margin-bottom:18px;font-size:16px;color:var(--g1);display:flex;align-items:center;gap:8px}
+.field{margin-bottom:13px}
+.field label{display:block;font-size:11px;font-weight:700;margin-bottom:4px;color:var(--muted);text-transform:uppercase}
+.qi{width:100%;padding:10px 12px;border:2px solid #ddd;border-radius:8px;outline:none;font-family:inherit;font-size:14px;transition:border .2s}
+.qi:focus{border-color:var(--g1)}
+select.qi{cursor:pointer}
+
+/* ── Toast ── */
+#toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1e1b4b;color:#fff;padding:11px 22px;border-radius:12px;font-size:13px;font-weight:600;z-index:9999;box-shadow:0 8px 24px rgba(0,0,0,.2);transition:opacity .3s;opacity:0;pointer-events:none;white-space:nowrap}
+
+/* ── Notification banner ── */
+.notif-banner{border-radius:10px;padding:12px 16px;margin-bottom:10px;display:flex;align-items:center;gap:10px;font-size:13px;font-weight:600}
+.nb-warn{background:#fef3c7;color:#92400e;border:1px solid #fcd34d}
+.nb-danger{background:#fee2e2;color:#991b1b;border:1px solid #f87171}
+.nb-info{background:#e0e7ff;color:#3730a3;border:1px solid #a5b4fc}
+
+/* ── Charts ── */
+.chart-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:18px;margin-bottom:22px}
+.chart-box{background:#fff;border-radius:var(--r);padding:18px;border:1px solid var(--border);box-shadow:var(--shadow)}
+.chart-box h3{font-size:13px;font-weight:800;margin-bottom:14px;color:var(--text)}
+
+/* ── Pricing card ── */
+.price-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin-bottom:20px}
+.price-card{background:#f8f0ff;border:2px solid var(--border);border-radius:12px;padding:18px;text-align:center}
+.price-card .plan-name{font-size:12px;font-weight:800;color:var(--muted);text-transform:uppercase;margin-bottom:8px}
+.price-input{width:100%;padding:10px;border:2px solid #ddd;border-radius:8px;text-align:center;font-size:20px;font-weight:900;color:var(--g1);font-family:inherit;outline:none}
+.price-input:focus{border-color:var(--g1)}
+
+/* ── Info row ── */
+.info-row{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #f5f5f5;font-size:13px}
+.info-row:last-child{border-bottom:none}
+.info-row .lbl{color:var(--muted);font-weight:600}
+.info-row .val{font-weight:800;color:var(--text)}
+
+/* ── User detail modal extra ── */
+.user-avatar{width:56px;height:56px;border-radius:50%;background:linear-gradient(135deg,var(--g1),var(--g2));display:flex;align-items:center;justify-content:center;font-size:22px;color:#fff;flex-shrink:0;margin-right:14px}
+.days-pill{display:inline-block;padding:4px 12px;border-radius:20px;font-size:11px;font-weight:800}
+
+/* ── Quick activate ── */
+.quick-box{background:linear-gradient(135deg,#f0f4ff,#f8f0ff);border:2px solid var(--border);border-radius:14px;padding:20px;margin-bottom:20px}
+
+/* ── Mobile sidebar toggle ── */
+#sidebar-toggle{display:none;position:fixed;top:14px;left:14px;z-index:600;width:38px;height:38px;border-radius:9px;background:var(--g1);color:#fff;border:none;cursor:pointer;font-size:16px;align-items:center;justify-content:center}
+
+@media(max-width:768px){
+  .sidebar{transform:translateX(-100%)}
+  .sidebar.open{transform:translateX(0)}
+  .main{margin-left:0}
+  #sidebar-toggle{display:flex}
+  .stat-grid{grid-template-columns:repeat(2,1fr)}
+  .topbar{padding:0 14px 0 60px}
+}
+</style>
+</head>
+<body>
+
+<!-- Loading -->
+<div id="a-loading">
+  <div class="spinner"></div>
+  <p style="color:#fff;font-weight:700;font-size:15px">Firebase সংযোগ হচ্ছে...</p>
+</div>
+
+<!-- Auth Screen -->
+<div id="a-auth">
+  <div class="auth-box">
+    <div class="auth-logo"><i class="fa-solid fa-shield-halved"></i></div>
+    <div class="auth-title">Super Admin Panel</div>
+    <div class="auth-sub">Shapla SaaS — শুধুমাত্র অ্যাডমিনের জন্য</div>
+    <div id="auth-err" class="auth-err"></div>
+    <input type="email" id="a-email" class="a-input" placeholder="Admin ইমেইল" autocomplete="email">
+    <input type="password" id="a-pass" class="a-input" placeholder="পাসওয়ার্ড" autocomplete="current-password" onkeydown="if(event.key==='Enter')doAdminLogin()">
+    <button class="a-btn" id="a-login-btn" onclick="doAdminLogin()">
+      <i class="fa-solid fa-right-to-bracket"></i> লগইন করুন
+    </button>
+  </div>
+</div>
+
+<!-- Access Denied -->
+<div id="a-denied">
+  <div class="denied-box">
+    <div style="font-size:64px;margin-bottom:16px">🚫</div>
+    <h2 style="color:#dc2626;font-size:22px;font-weight:900;margin-bottom:8px">Access Denied</h2>
+    <p style="color:#888;font-size:14px;margin-bottom:24px">আপনি Super Admin নন। এই পেজে প্রবেশের অনুমতি নেই।</p>
+    <button onclick="forcedLogout()" style="padding:12px 28px;background:#dc2626;color:#fff;border:none;border-radius:10px;font-weight:800;cursor:pointer;font-size:14px;font-family:inherit">
+      <i class="fa-solid fa-right-from-bracket"></i> লগআউট করুন
+    </button>
+  </div>
+</div>
+
+<!-- Main App -->
+<div id="a-app">
+  <!-- Sidebar toggle (mobile) -->
+  <button id="sidebar-toggle" onclick="toggleSidebar()"><i class="fa-solid fa-bars"></i></button>
+
+  <!-- Sidebar -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-logo">
+      <h2><i class="fa-solid fa-shield-halved" style="color:#a5b4fc"></i> Admin Panel</h2>
+      <p>Shapla SaaS v1.0</p>
+    </div>
+    <nav class="sidebar-nav">
+      <button class="nav-item active" id="nav-dashboard" onclick="goSection('dashboard',this)">
+        <i class="fa-solid fa-chart-pie"></i> ড্যাশবোর্ড
+        <span class="nav-badge" id="nb-action" style="display:none">0</span>
+      </button>
+      <button class="nav-item" id="nav-users" onclick="goSection('users',this)">
+        <i class="fa-solid fa-users"></i> ইউজার ম্যানেজমেন্ট
+      </button>
+      <button class="nav-item" id="nav-activate" onclick="goSection('activate',this)">
+        <i class="fa-solid fa-bolt"></i> অ্যাক্টিভেশন
+        <span class="nav-badge" id="nb-pending" style="display:none">0</span>
+      </button>
+      <button class="nav-item" id="nav-revenue" onclick="goSection('revenue',this)">
+        <i class="fa-solid fa-chart-line"></i> রেভেনিউ
+      </button>
+      <button class="nav-item" id="nav-pricing" onclick="goSection('pricing',this)">
+        <i class="fa-solid fa-tags"></i> প্রাইসিং
+      </button>
+      <button class="nav-item" id="nav-info" onclick="goSection('info',this)">
+        <i class="fa-solid fa-circle-info"></i> Admin তথ্য
+      </button>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="admin-email" id="sidebar-email"></div>
+      <button class="logout-btn" onclick="doAdminLogout()">
+        <i class="fa-solid fa-right-from-bracket"></i> লগআউট
+      </button>
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <div class="main">
+    <header class="topbar">
+      <h1 id="page-title"><i class="fa-solid fa-chart-pie" style="color:var(--g1)"></i> ড্যাশবোর্ড</h1>
+      <div class="topbar-right">
+        <span class="online-dot" title="অনলাইন"></span>
+        <span style="font-size:12px;color:var(--muted)" id="last-refresh-lbl"></span>
+        <button class="refresh-btn" onclick="loadAllData(true)">
+          <i class="fa-solid fa-arrows-rotate"></i> রিফ্রেশ
+        </button>
+      </div>
+    </header>
+
+    <div class="content">
+
+      <!-- ════ DASHBOARD ════ -->
+      <div class="page active" id="sec-dashboard">
+        <!-- Notifications -->
+        <div id="notif-area" style="margin-bottom:18px"></div>
+
+        <!-- Stats -->
+        <div class="stat-grid" id="dash-stats"></div>
+
+        <!-- Charts -->
+        <div class="chart-grid">
+          <div class="chart-box">
+            <h3><i class="fa-solid fa-chart-bar" style="color:var(--g1)"></i> প্ল্যান অনুযায়ী ইউজার</h3>
+            <canvas id="planChart" height="180"></canvas>
+          </div>
+          <div class="chart-box">
+            <h3><i class="fa-solid fa-chart-pie" style="color:var(--g2)"></i> স্ট্যাটাস অনুযায়ী বিতরণ</h3>
+            <canvas id="statusChart" height="180"></canvas>
+          </div>
+          <div class="chart-box">
+            <h3><i class="fa-solid fa-chart-line" style="color:var(--green)"></i> মাসভিত্তিক নিবন্ধন</h3>
+            <canvas id="regChart" height="180"></canvas>
+          </div>
+        </div>
+
+        <!-- Expiring soon table -->
+        <div class="card">
+          <h3><i class="fa-solid fa-clock" style="color:var(--amber)"></i> ৭ দিনের মধ্যে মেয়াদ শেষ হবে</h3>
+          <div class="tbl-wrap">
+            <table>
+              <thead><tr>
+                <th>ইমেইল</th><th>স্ট্যাটাস</th><th>প্ল্যান</th>
+                <th>মেয়াদ শেষ</th><th>বাকি দিন</th><th>অ্যাকশন</th>
+              </tr></thead>
+              <tbody id="expiring-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ════ USERS ════ -->
+      <div class="page" id="sec-users">
+        <div class="filter-bar">
+          <button class="fbtn active" onclick="filterUsers('all',this)"><i class="fa-solid fa-border-all"></i> সব</button>
+          <button class="fbtn" onclick="filterUsers('active',this)"><i class="fa-solid fa-circle-check"></i> Active</button>
+          <button class="fbtn" onclick="filterUsers('trial',this)"><i class="fa-solid fa-clock"></i> Trial</button>
+          <button class="fbtn" onclick="filterUsers('pending',this)"><i class="fa-solid fa-hourglass"></i> Pending</button>
+          <button class="fbtn" onclick="filterUsers('expired',this)"><i class="fa-solid fa-ban"></i> Expired</button>
+          <button class="fbtn" onclick="cleanOrphans()" style="margin-left:auto;background:#fff0f3;border-color:#fecdd3;color:#e11d48" title="Firebase Auth ছাড়া Firestore record মুছুন">
+            <i class="fa-solid fa-broom"></i> Orphan Cleanup
+          </button>
+        </div>
+        <div class="search-box">
+          <i class="fa-solid fa-magnifying-glass"></i>
+          <input type="text" id="user-search" placeholder="Email বা UID দিয়ে সার্চ করুন..." oninput="renderUsersTable()">
+        </div>
+        <div class="card" style="padding:0">
+          <div class="tbl-wrap">
+            <table>
+              <thead><tr>
+                <th>#</th><th>ইমেইল / দোকান</th><th>স্ট্যাটাস</th>
+                <th>প্ল্যান</th><th>মেয়াদ শেষ</th><th>নিবন্ধন</th><th>অ্যাকশন</th>
+              </tr></thead>
+              <tbody id="users-tbody"></tbody>
+            </table>
+          </div>
+          <div id="users-empty" style="text-align:center;padding:40px;color:#ccc;display:none">
+            <i class="fa-solid fa-inbox" style="font-size:40px"></i>
+            <p style="margin-top:10px">কোনো ইউজার পাওয়া যায়নি</p>
+          </div>
+        </div>
+        <div id="users-count" style="font-size:12px;color:var(--muted);margin-top:10px;text-align:right"></div>
+      </div>
+
+      <!-- ════ ACTIVATION ════ -->
+      <div class="page" id="sec-activate">
+        <!-- Quick Find -->
+        <div class="quick-box">
+          <h3 style="font-size:15px;font-weight:800;margin-bottom:12px;display:flex;align-items:center;gap:8px">
+            <i class="fa-solid fa-magnifying-glass-plus" style="color:var(--g1)"></i>
+            দ্রুত খুঁজুন ও অ্যাক্টিভ করুন
+          </h3>
+          <div style="display:flex;gap:10px;flex-wrap:wrap">
+            <input type="text" id="quick-search-inp" class="qi" placeholder="Email বা UID লিখুন..." style="flex:1;min-width:200px" oninput="quickSearch()">
+            <button onclick="quickSearch()" style="padding:10px 18px;background:var(--g1);color:#fff;border:none;border-radius:8px;font-weight:700;cursor:pointer;font-family:inherit;font-size:13px">
+              <i class="fa-solid fa-search"></i> খুঁজুন
+            </button>
+          </div>
+          <div id="quick-result" style="margin-top:12px"></div>
+        </div>
+
+        <!-- Pending activations -->
+        <div class="card" style="margin-bottom:18px">
+          <h3><i class="fa-solid fa-hourglass-half" style="color:var(--amber)"></i> Pending — অ্যাক্টিভেশন দরকার
+            <span id="pending-count-badge" style="background:#dc2626;color:#fff;padding:2px 8px;border-radius:99px;font-size:10px;font-weight:800;margin-left:6px"></span>
+          </h3>
+          <div id="pending-list"></div>
+        </div>
+
+        <!-- Expiring within 7 days -->
+        <div class="card">
+          <h3><i class="fa-solid fa-triangle-exclamation" style="color:var(--red)"></i> শীঘ্রই মেয়াদ শেষ (৭ দিনের মধ্যে)</h3>
+          <div id="expiring-list"></div>
+        </div>
+      </div>
+
+      <!-- ════ REVENUE ════ -->
+      <div class="page" id="sec-revenue">
+        <div class="stat-grid" id="revenue-stats"></div>
+        <div class="chart-grid">
+          <div class="chart-box" style="grid-column:1/-1">
+            <h3><i class="fa-solid fa-chart-bar" style="color:var(--g1)"></i> মাসভিত্তিক আয় (প্রজেক্টেড)</h3>
+            <canvas id="revenueChart" height="100"></canvas>
+          </div>
+        </div>
+        <div class="card">
+          <h3><i class="fa-solid fa-list" style="color:var(--g2)"></i> প্ল্যানভিত্তিক বিবরণ</h3>
+          <div id="plan-breakdown"></div>
+        </div>
+      </div>
+
+      <!-- ════ PRICING ════ -->
+      <div class="page" id="sec-pricing">
+        <div class="card" style="max-width:600px">
+          <h3><i class="fa-solid fa-tags" style="color:var(--g1)"></i> প্ল্যানের মূল্য নির্ধারণ</h3>
+          <p style="font-size:13px;color:var(--muted);margin-bottom:20px">মূল্য পরিবর্তন করলে Firestore-এ সেভ হবে এবং Revenue স্বয়ংক্রিয় আপডেট হবে।</p>
+          <div class="price-grid" id="pricing-grid"></div>
+          <button onclick="savePricing()" style="width:100%;padding:13px;background:linear-gradient(135deg,var(--g1),var(--g2));color:#fff;border:none;border-radius:10px;font-weight:800;font-size:14px;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;gap:8px">
+            <i class="fa-solid fa-floppy-disk"></i> মূল্য সেভ করুন
+          </button>
+          <div id="pricing-msg" style="display:none;margin-top:12px;padding:10px;border-radius:8px;font-size:13px;font-weight:700;text-align:center"></div>
+        </div>
+      </div>
+
+      <!-- ════ INFO ════ -->
+      <div class="page" id="sec-info">
+        <div class="card" style="max-width:600px">
+          <h3><i class="fa-solid fa-circle-info" style="color:var(--g1)"></i> Admin ও System তথ্য</h3>
+          <div id="info-content"></div>
+        </div>
+      </div>
+
+    </div><!-- /content -->
+  </div><!-- /main -->
+</div><!-- /app -->
+
+<!-- Activation Modal -->
+<div class="overlay" id="m-activate">
+  <div class="modal">
+    <h3><i class="fa-solid fa-crown" style="color:var(--amber)"></i> সাবস্ক্রিপশন অ্যাক্টিভেশন</h3>
+    <input type="hidden" id="act-uid">
+
+    <!-- User info -->
+    <div style="background:#f8f0ff;border-radius:10px;padding:14px;margin-bottom:16px;display:flex;align-items:center">
+      <div class="user-avatar"><i class="fa-solid fa-user"></i></div>
+      <div>
+        <div style="font-weight:800;font-size:14px" id="act-email"></div>
+        <div style="font-size:12px;color:var(--muted)" id="act-biz"></div>
+        <div style="margin-top:4px" id="act-cur-status"></div>
+      </div>
+    </div>
+
+    <div class="field">
+      <label>স্ট্যাটাস সেট করুন</label>
+      <select id="act-status" class="qi" onchange="onActStatusChange()">
+        <option value="active">✅ Active (পেইড)</option>
+        <option value="trial">🎁 Trial (বিনামূল্যে)</option>
+        <option value="expired">❌ Expired (বন্ধ)</option>
+      </select>
+    </div>
+
+    <div id="act-plan-row" class="field">
+      <label>প্ল্যান</label>
+      <select id="act-plan" class="qi">
+        <option value="basic">Basic — ৳<span id="act-basic-price">299</span>/মাস</option>
+        <option value="pro">Pro — ৳<span id="act-pro-price">499</span>/মাস</option>
+        <option value="business">Business — ৳<span id="act-biz-price">799</span>/মাস</option>
+      </select>
+    </div>
+
+    <div id="act-days-row" class="field">
+      <label>মেয়াদ</label>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:8px">
+        <button class="days-pill" style="background:#e0e7ff;color:#3730a3;border:none;cursor:pointer;font-family:inherit;font-weight:700;font-size:11px;padding:6px 4px;border-radius:8px" onclick="setDays(14)">১৪ দিন</button>
+        <button class="days-pill" style="background:#e0e7ff;color:#3730a3;border:none;cursor:pointer;font-family:inherit;font-weight:700;font-size:11px;padding:6px 4px;border-radius:8px" onclick="setDays(30)">৩০ দিন</button>
+        <button class="days-pill" style="background:#e0e7ff;color:#3730a3;border:none;cursor:pointer;font-family:inherit;font-weight:700;font-size:11px;padding:6px 4px;border-radius:8px" onclick="setDays(90)">৯০ দিন</button>
+        <button class="days-pill" style="background:#e0e7ff;color:#3730a3;border:none;cursor:pointer;font-family:inherit;font-weight:700;font-size:11px;padding:6px 4px;border-radius:8px" onclick="setDays(365)">১ বছর</button>
+      </div>
+      <input type="number" id="act-days" class="qi" placeholder="Custom দিন (যেমন: 45)" min="1" max="3650" oninput="updateExpiryPreview()">
+      <div id="expiry-preview" style="font-size:12px;color:var(--g1);font-weight:700;margin-top:5px"></div>
+    </div>
+
+    <div class="field">
+      <label>নোট (পেমেন্ট তথ্য ইত্যাদি)</label>
+      <input type="text" id="act-note" class="qi" placeholder="যেমন: bKash ০১৭... — ৳৩০০ পেয়েছি">
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:4px">
+      <button onclick="confirmActivation()" style="padding:12px;background:linear-gradient(135deg,#059669,#10b981);color:#fff;border:none;border-radius:10px;font-weight:800;cursor:pointer;font-family:inherit;font-size:14px">
+        <i class="fa-solid fa-check"></i> নিশ্চিত করুন
+      </button>
+      <button onclick="closeModal('m-activate')" style="padding:12px;background:#f3f4f6;color:#374151;border:none;border-radius:10px;font-weight:700;cursor:pointer;font-family:inherit">বাতিল</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div id="toast"></div>
+
+<script>
+// ══════════════════════════════════════════════════
+// STATE
+// ══════════════════════════════════════════════════
+var A = null;  // window._A
+var _users = [];
+var _pricing = { basic: 299, pro: 499, business: 799 };
+var _userFilter = 'all';
+var _planChart = null, _statusChart = null, _regChart = null, _revChart = null;
+
+// ══════════════════════════════════════════════════
+// BOOTSTRAP
+// ══════════════════════════════════════════════════
+document.addEventListener('a-ready', function(e) {
+  A = window._A;
+  document.getElementById('a-loading').style.display = 'none';
+
+  var user = e.detail.user;
+
+  if (!user) {
+    // লগইন নেই
+    document.getElementById('a-auth').classList.add('show');
+    return;
+  }
+
+  var email = (user.email || '').toLowerCase();
+  if (!A.ADMIN_EMAILS.includes(email)) {
+    // Access denied
+    document.getElementById('a-denied').classList.add('show');
+    setTimeout(forcedLogout, 3000);
+    return;
+  }
+
+  // Admin authenticated
+  document.getElementById('sidebar-email').textContent = user.email;
+  document.getElementById('a-app').style.display = 'block';
+  loadAllData(false);
+});
+
+// Fallback if event never fires
+setTimeout(function() {
+  if (!window._aReady) {
+    document.getElementById('a-loading').querySelector('p').textContent = 'সংযোগে সমস্যা। পেজ রিলোড করুন।';
+  }
+}, 10000);
+
+// ══════════════════════════════════════════════════
+// AUTH
+// ══════════════════════════════════════════════════
+async function doAdminLogin() {
+  var email = document.getElementById('a-email').value.trim();
+  var pass  = document.getElementById('a-pass').value;
+  var errEl = document.getElementById('auth-err');
+  var btn   = document.getElementById('a-login-btn');
+  errEl.style.display = 'none';
+
+  if (!email || !pass) {
+    errEl.textContent = 'ইমেইল ও পাসওয়ার্ড দিন!';
+    errEl.style.display = 'block'; return;
+  }
+  // Pre-check: admin email?
+  if (!window._A.ADMIN_EMAILS.includes(email.toLowerCase())) {
+    errEl.textContent = '🚫 এই ইমেইল Admin হিসেবে অনুমোদিত নয়!';
+    errEl.style.display = 'block'; return;
+  }
+
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> লগইন হচ্ছে...';
+
+  try {
+    await A.adminLogin(email, pass);
+    // onAuthStateChanged triggers → bootstrap
+  } catch(e) {
+    errEl.textContent = authErr(e.code);
+    errEl.style.display = 'block';
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fa-solid fa-right-to-bracket"></i> লগইন করুন';
+  }
+}
+
+async function doAdminLogout() {
+  if (!confirm('লগআউট করবেন?')) return;
+  await A.adminLogout();
+  location.reload();
+}
+
+async function forcedLogout() {
+  try { await A.adminLogout(); } catch(e) {}
+  location.reload();
+}
+
+function authErr(code) {
+  var m = {
+    'auth/invalid-credential': 'ইমেইল বা পাসওয়ার্ড ভুল।',
+    'auth/user-not-found': 'এই ইমেইলে অ্যাকাউন্ট নেই।',
+    'auth/wrong-password': 'পাসওয়ার্ড ভুল।',
+    'auth/too-many-requests': 'অনেকবার চেষ্টা হয়েছে। পরে চেষ্টা করুন।',
+    'auth/network-request-failed': 'ইন্টারনেট সংযোগ নেই।',
+  };
+  return m[code] || ('সমস্যা: ' + code);
+}
+
+// ══════════════════════════════════════════════════
+// NAVIGATION
+// ══════════════════════════════════════════════════
+var _sectionTitles = {
+  dashboard: ['fa-chart-pie','ড্যাশবোর্ড'],
+  users:     ['fa-users','ইউজার ম্যানেজমেন্ট'],
+  activate:  ['fa-bolt','অ্যাক্টিভেশন'],
+  revenue:   ['fa-chart-line','রেভেনিউ'],
+  pricing:   ['fa-tags','প্রাইসিং'],
+  info:      ['fa-circle-info','Admin তথ্য'],
+};
+
+function goSection(id, btn) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
+  document.getElementById('sec-' + id).classList.add('active');
+  if (btn) btn.classList.add('active');
+
+  var t = _sectionTitles[id] || ['fa-circle','পেজ'];
+  document.getElementById('page-title').innerHTML =
+    '<i class="fa-solid ' + t[0] + '" style="color:var(--g1)"></i> ' + t[1];
+
+  if (id === 'dashboard') renderDashboard();
+  if (id === 'users')     renderUsersTable();
+  if (id === 'activate')  renderActivationSection();
+  if (id === 'revenue')   renderRevenue();
+  if (id === 'pricing')   renderPricing();
+  if (id === 'info')      renderInfo();
+
+  // Mobile: close sidebar
+  document.getElementById('sidebar').classList.remove('open');
+}
+
+function toggleSidebar() {
+  document.getElementById('sidebar').classList.toggle('open');
+}
+
+// ══════════════════════════════════════════════════
+// DATA LOAD
+// ══════════════════════════════════════════════════
+async function loadAllData(showToastMsg) {
+  var btn = document.querySelector('.refresh-btn');
+  if (btn) { btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> লোড হচ্ছে...'; btn.disabled = true; }
+
+  try {
+    // Tenants registry
+    var raw = await A.dbGetAll('tenants_registry');
+    _users = raw;
+
+    // Pricing from Firestore
+    var pricingDoc = await A.dbGetDoc('admin_config', 'pricing');
+    if (pricingDoc) {
+      _pricing = { basic: pricingDoc.basic || 299, pro: pricingDoc.pro || 499, business: pricingDoc.business || 799 };
+    }
+
+    var now = new Date();
+    document.getElementById('last-refresh-lbl').textContent =
+      now.getHours() + ':' + String(now.getMinutes()).padStart(2,'0') + ' এ আপডেট';
+
+    if (showToastMsg) toast('✅ ডেটা রিফ্রেশ হয়েছে!');
+
+    // Update badges
+    updateBadges();
+
+    // Render current active section
+    var active = document.querySelector('.page.active');
+    if (active) {
+      var id = active.id.replace('sec-','');
+      if (id === 'dashboard') renderDashboard();
+      if (id === 'users')     renderUsersTable();
+      if (id === 'activate')  renderActivationSection();
+      if (id === 'revenue')   renderRevenue();
+    }
+
+  } catch(e) {
+    toast('⚠️ লোড ব্যর্থ: ' + e.message);
+    console.error(e);
+  }
+
+  if (btn) { btn.innerHTML = '<i class="fa-solid fa-arrows-rotate"></i> রিফ্রেশ'; btn.disabled = false; }
+}
+
+// ══════════════════════════════════════════════════
+// HELPERS
+// ══════════════════════════════════════════════════
+function getStatus(u) {
+  var now = Date.now();
+  if (!u.status || u.status === 'pending') return 'pending';
+  if (u.status === 'active' && (u.paidUntil || 0) > now) return 'active';
+  if (u.status === 'trial' && (u.trialEnd || 0) > now) return 'trial';
+  if (u.status === 'suspended') return 'suspended';
+  return 'expired';
+}
+
+function getDaysLeft(u) {
+  var now = Date.now();
+  var state = getStatus(u);
+  var end = state === 'active' ? (u.paidUntil || 0) : (u.trialEnd || 0);
+  if (!end) return -999;
+  return Math.ceil((end - now) / 86400000);
+}
+
+function fmtDate(ms) {
+  if (!ms) return '—';
+  return new Date(ms).toLocaleDateString('bn-BD');
+}
+
+function statusBadge(state) {
+  var map = {
+    active:    ['b-active','✅ Active'],
+    trial:     ['b-trial', '🎁 Trial'],
+    pending:   ['b-pending','⏳ Pending'],
+    expired:   ['b-expired','❌ Expired'],
+    suspended: ['b-suspended','🚫 Suspended'],
+  };
+  var v = map[state] || ['b-suspended', state];
+  return '<span class="badge ' + v[0] + '">' + v[1] + '</span>';
+}
+
+function daysLabel(days) {
+  if (days < 0)   return '<span class="exp-danger">মেয়াদ শেষ</span>';
+  if (days <= 7)  return '<span class="exp-danger">' + days + ' দিন</span>';
+  if (days <= 30) return '<span class="exp-warn">' + days + ' দিন</span>';
+  return '<span class="exp-safe">' + days + ' দিন</span>';
+}
+
+function updateBadges() {
+  var now = Date.now();
+  var pending  = _users.filter(u => getStatus(u) === 'pending').length;
+  var expiring = _users.filter(u => { var d = getDaysLeft(u); return d >= 0 && d <= 7; }).length;
+  var action   = pending + expiring;
+
+  var nb = document.getElementById('nb-action');
+  var np = document.getElementById('nb-pending');
+  nb.style.display  = action  > 0 ? 'inline' : 'none';
+  nb.textContent    = action;
+  np.style.display  = pending > 0 ? 'inline' : 'none';
+  np.textContent    = pending;
+}
+
+// ══════════════════════════════════════════════════
+// DASHBOARD
+// ══════════════════════════════════════════════════
+function renderDashboard() {
+  var now = Date.now();
+  var total     = _users.length;
+  var active    = _users.filter(u => getStatus(u) === 'active').length;
+  var trial     = _users.filter(u => getStatus(u) === 'trial').length;
+  var pending   = _users.filter(u => getStatus(u) === 'pending').length;
+  var expired   = _users.filter(u => getStatus(u) === 'expired').length;
+  var expiring7 = _users.filter(u => { var d = getDaysLeft(u); return d >= 0 && d <= 7; }).length;
+
+  document.getElementById('dash-stats').innerHTML = `
+    <div class="stat-card sc-purple"><div class="sc-icon"><i class="fa-solid fa-users"></i></div><h4>মোট ইউজার</h4><h2>${total}</h2><small>সর্বমোট নিবন্ধিত</small></div>
+    <div class="stat-card sc-green"><div class="sc-icon"><i class="fa-solid fa-circle-check"></i></div><h4>Active</h4><h2>${active}</h2><small>পেইড সদস্য</small></div>
+    <div class="stat-card sc-amber"><div class="sc-icon"><i class="fa-solid fa-clock"></i></div><h4>Trial</h4><h2>${trial}</h2><small>ফ্রি ট্রায়ালে</small></div>
+    <div class="stat-card sc-sky"><div class="sc-icon"><i class="fa-solid fa-hourglass"></i></div><h4>Pending</h4><h2>${pending}</h2><small>অ্যাক্টিভেশন দরকার</small></div>
+    <div class="stat-card sc-red"><div class="sc-icon"><i class="fa-solid fa-ban"></i></div><h4>Expired</h4><h2>${expired}</h2><small>মেয়াদ শেষ</small></div>
+    <div class="stat-card sc-pink"><div class="sc-icon"><i class="fa-solid fa-triangle-exclamation"></i></div><h4>শীঘ্রই শেষ</h4><h2>${expiring7}</h2><small>৭ দিনের মধ্যে</small></div>
+  `;
+
+  // Notifications
+  var notifs = '';
+  if (pending > 0)
+    notifs += `<div class="notif-banner nb-info"><i class="fa-solid fa-hourglass-half"></i> <b>${pending} জন</b> পেন্ডিং ইউজার অ্যাক্টিভেশনের অপেক্ষায়। <button onclick="goSection('activate',document.getElementById('nav-activate'))" style="margin-left:auto;padding:4px 10px;background:#3730a3;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:11px;font-family:inherit;font-weight:700">দেখুন</button></div>`;
+  if (expiring7 > 0)
+    notifs += `<div class="notif-banner nb-warn"><i class="fa-solid fa-clock"></i> <b>${expiring7} জন</b> ইউজারের সাবস্ক্রিপশন ৭ দিনের মধ্যে শেষ হবে।</div>`;
+  if (expired > 0)
+    notifs += `<div class="notif-banner nb-danger"><i class="fa-solid fa-ban"></i> <b>${expired} জন</b> ইউজারের মেয়াদ শেষ হয়েছে।</div>`;
+  document.getElementById('notif-area').innerHTML = notifs;
+
+  // Charts
+  renderCharts(active, trial, pending, expired);
+
+  // Expiring table
+  var exp7 = _users.filter(u => { var d = getDaysLeft(u); return d >= 0 && d <= 7; });
+  document.getElementById('expiring-tbody').innerHTML = exp7.length
+    ? exp7.map(u => `
+        <tr>
+          <td>${u.email || u.id}</td>
+          <td>${statusBadge(getStatus(u))}</td>
+          <td>${(u.plan||'basic').toUpperCase()}</td>
+          <td>${fmtDate(getStatus(u)==='active'?u.paidUntil:u.trialEnd)}</td>
+          <td>${daysLabel(getDaysLeft(u))}</td>
+          <td><button class="act-btn ab-green" onclick="openActivation('${u.uid||u.id}')"><i class="fa-solid fa-bolt"></i> রিনিউ</button></td>
+        </tr>`).join('')
+    : '<tr><td colspan="6" style="text-align:center;color:#ccc;padding:20px">কেউ এই মুহূর্তে এক্সপায়ার হচ্ছে না</td></tr>';
+}
+
+function renderCharts(active, trial, pending, expired) {
+  // Plan distribution
+  var planCount = { basic:0, pro:0, business:0 };
+  _users.filter(u=>getStatus(u)==='active').forEach(u=>{planCount[u.plan||'basic']=(planCount[u.plan||'basic']||0)+1;});
+
+  if (_planChart) _planChart.destroy();
+  var pc = document.getElementById('planChart');
+  if (pc) _planChart = new Chart(pc.getContext('2d'), {
+    type: 'bar',
+    data: { labels:['Basic','Pro','Business'],
+      datasets:[{data:[planCount.basic,planCount.pro,planCount.business],
+        backgroundColor:['#6366f1','#8b5cf6','#ec4899'],borderRadius:6}]},
+    options:{responsive:true,plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,ticks:{stepSize:1}}}}
+  });
+
+  // Status pie
+  if (_statusChart) _statusChart.destroy();
+  var sc = document.getElementById('statusChart');
+  if (sc) _statusChart = new Chart(sc.getContext('2d'), {
+    type: 'doughnut',
+    data: { labels:['Active','Trial','Pending','Expired'],
+      datasets:[{data:[active,trial,pending,expired],
+        backgroundColor:['#059669','#d97706','#6366f1','#dc2626'],borderWidth:2}]},
+    options:{responsive:true,plugins:{legend:{position:'bottom',labels:{font:{size:11}}}}}
+  });
+
+  // Monthly registrations (last 6 months)
+  var months = [], counts = [];
+  for (var i = 5; i >= 0; i--) {
+    var d = new Date(); d.setMonth(d.getMonth() - i);
+    var ym = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
+    months.push(new Intl.DateTimeFormat('bn-BD',{month:'short'}).format(d));
+    counts.push(_users.filter(u => {
+      var ca = u.createdAt ? new Date(u.createdAt) : null;
+      return ca && (ca.getFullYear()+'-'+String(ca.getMonth()+1).padStart(2,'0')) === ym;
+    }).length);
+  }
+  if (_regChart) _regChart.destroy();
+  var rc = document.getElementById('regChart');
+  if (rc) _regChart = new Chart(rc.getContext('2d'), {
+    type:'line', data:{labels:months,datasets:[{label:'নিবন্ধন',data:counts,
+      borderColor:'#059669',backgroundColor:'rgba(5,150,105,.1)',fill:true,tension:.4,pointRadius:4}]},
+    options:{responsive:true,plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,ticks:{stepSize:1}}}}
+  });
+}
+
+// ══════════════════════════════════════════════════
+// USERS TABLE
+// ══════════════════════════════════════════════════
+function filterUsers(f, btn) {
+  _userFilter = f;
+  document.querySelectorAll('.filter-bar .fbtn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderUsersTable();
+}
+
+function renderUsersTable() {
+  var q = (document.getElementById('user-search').value || '').toLowerCase();
+  var list = _users.filter(u => {
+    if (q && !(u.email||'').toLowerCase().includes(q) && !(u.uid||u.id||'').toLowerCase().includes(q) && !(u.bizName||'').toLowerCase().includes(q)) return false;
+    var s = getStatus(u);
+    if (_userFilter !== 'all' && s !== _userFilter) return false;
+    return true;
+  });
+
+  var tbody = document.getElementById('users-tbody');
+  var empty = document.getElementById('users-empty');
+
+  if (!list.length) {
+    tbody.innerHTML = '';
+    empty.style.display = 'block';
+    document.getElementById('users-count').textContent = '';
+    return;
+  }
+  empty.style.display = 'none';
+  document.getElementById('users-count').textContent = 'মোট ' + list.length + ' জন পাওয়া গেছে';
+
+  tbody.innerHTML = list.map((u, i) => {
+    var st = getStatus(u);
+    var days = getDaysLeft(u);
+    var expDate = st === 'active' ? u.paidUntil : u.trialEnd;
+    return `<tr>
+      <td style="color:var(--muted);font-size:12px">${i+1}</td>
+      <td>
+        <div style="font-weight:700;font-size:13px">${u.email || u.id}</div>
+        <div style="font-size:11px;color:var(--muted)">${u.bizName || '—'}</div>
+      </td>
+      <td>${statusBadge(st)}</td>
+      <td><span style="font-size:11px;font-weight:700;text-transform:uppercase">${u.plan||'basic'}</span></td>
+      <td>
+        <div style="font-size:12px">${fmtDate(expDate)}</div>
+        <div style="font-size:11px">${days > -999 ? daysLabel(days) : ''}</div>
+      </td>
+      <td style="font-size:11px;color:var(--muted)">${fmtDate(u.createdAt)}</td>
+      <td>
+        <div style="display:flex;gap:5px;flex-wrap:wrap">
+          <button class="act-btn ab-blue" onclick="openActivation('${u.uid||u.id}')"><i class="fa-solid fa-pen-to-square"></i> এডিট</button>
+          ${st !== 'suspended'
+            ? `<button class="act-btn ab-red" onclick="suspendUser('${u.uid||u.id}')"><i class="fa-solid fa-ban"></i> সাসপেন্ড</button>`
+            : `<button class="act-btn ab-green" onclick="openActivation('${u.uid||u.id}')"><i class="fa-solid fa-check"></i> পুনরায়</button>`}
+          <button class="act-btn" onclick="deleteUser('${u.uid||u.id}','${(u.email||'').replace(/'/g,'')}')" style="background:#fce7f3;color:#9d174d" title="Firestore থেকে সম্পূর্ণ মুছুন"><i class="fa-solid fa-trash"></i></button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+// ══════════════════════════════════════════════════
+// ACTIVATION SECTION
+// ══════════════════════════════════════════════════
+function renderActivationSection() {
+  // Pending list
+  var pending = _users.filter(u => getStatus(u) === 'pending');
+  var pb = document.getElementById('pending-count-badge');
+  pb.textContent = pending.length > 0 ? pending.length : '';
+  pb.style.display = pending.length > 0 ? 'inline' : 'none';
+
+  document.getElementById('pending-list').innerHTML = pending.length
+    ? pending.map(u => `
+        <div style="display:flex;align-items:center;gap:12px;padding:12px;background:#f8f9fa;border-radius:10px;margin-bottom:8px;flex-wrap:wrap">
+          <div style="flex:1;min-width:180px">
+            <div style="font-weight:800;font-size:13px">${u.email||u.id}</div>
+            <div style="font-size:11px;color:var(--muted)">${u.bizName||'—'} · নিবন্ধন: ${fmtDate(u.createdAt)}</div>
+          </div>
+          ${statusBadge('pending')}
+          <button class="act-btn ab-green" onclick="openActivation('${u.uid||u.id}')">
+            <i class="fa-solid fa-bolt"></i> এখনই অ্যাক্টিভ করুন
+          </button>
+        </div>`).join('')
+    : '<p style="color:#aaa;text-align:center;padding:20px;font-size:13px">✅ কোনো Pending ইউজার নেই</p>';
+
+  // Expiring list
+  var exp7 = _users.filter(u => { var d = getDaysLeft(u); return d >= 0 && d <= 7; });
+  document.getElementById('expiring-list').innerHTML = exp7.length
+    ? exp7.map(u => `
+        <div style="display:flex;align-items:center;gap:12px;padding:12px;background:#fff8f0;border:1px solid #fed7aa;border-radius:10px;margin-bottom:8px;flex-wrap:wrap">
+          <div style="flex:1;min-width:180px">
+            <div style="font-weight:800;font-size:13px">${u.email||u.id}</div>
+            <div style="font-size:11px;color:var(--muted)">${u.bizName||'—'} · প্ল্যান: ${(u.plan||'basic').toUpperCase()}</div>
+          </div>
+          ${daysLabel(getDaysLeft(u))} বাকি
+          <button class="act-btn ab-amber" onclick="openActivation('${u.uid||u.id}')">
+            <i class="fa-solid fa-arrows-rotate"></i> রিনিউ করুন
+          </button>
+        </div>`).join('')
+    : '<p style="color:#aaa;text-align:center;padding:20px;font-size:13px">✅ কেউ শীঘ্রই expire হচ্ছে না</p>';
+}
+
+// ══════════════════════════════════════════════════
+// QUICK SEARCH
+// ══════════════════════════════════════════════════
+function quickSearch() {
+  var q = (document.getElementById('quick-search-inp').value || '').trim().toLowerCase();
+  var res = document.getElementById('quick-result');
+  if (!q) { res.innerHTML = ''; return; }
+
+  var found = _users.filter(u =>
+    (u.email||'').toLowerCase().includes(q) ||
+    (u.uid||u.id||'').toLowerCase().includes(q) ||
+    (u.bizName||'').toLowerCase().includes(q)
+  );
+
+  if (!found.length) {
+    res.innerHTML = '<p style="color:#dc2626;font-size:13px;font-weight:600">❌ কোনো ইউজার পাওয়া যায়নি।</p>';
+    return;
+  }
+
+  res.innerHTML = found.slice(0,5).map(u => {
+    var st = getStatus(u);
+    return `<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:#fff;border:1px solid var(--border);border-radius:10px;margin-bottom:6px;flex-wrap:wrap">
+      <div style="flex:1">
+        <div style="font-weight:800;font-size:13px">${u.email||u.id}</div>
+        <div style="font-size:11px;color:var(--muted)">${u.bizName||'—'} · ${statusBadge(st)}</div>
+      </div>
+      <button class="act-btn ab-green" onclick="openActivation('${u.uid||u.id}')">
+        <i class="fa-solid fa-bolt"></i> অ্যাক্টিভেশন
+      </button>
+    </div>`;
+  }).join('');
+}
+
+// ══════════════════════════════════════════════════
+// ACTIVATION MODAL
+// ══════════════════════════════════════════════════
+function openActivation(uid) {
+  var u = _users.find(x => (x.uid||x.id) === uid);
+  if (!u) return;
+
+  document.getElementById('act-uid').value = uid;
+  document.getElementById('act-email').textContent = u.email || uid;
+  document.getElementById('act-biz').textContent = u.bizName || '—';
+
+  var st = getStatus(u);
+  document.getElementById('act-cur-status').innerHTML = statusBadge(st);
+
+  document.getElementById('act-status').value = ['active','trial','expired'].includes(u.status) ? u.status : 'active';
+  document.getElementById('act-plan').value = u.plan || 'basic';
+  document.getElementById('act-days').value = '';
+  document.getElementById('expiry-preview').textContent = '';
+  document.getElementById('act-note').value = u.lastNote || '';
+
+  // Update price labels
+  document.getElementById('act-basic-price').textContent = _pricing.basic;
+  document.getElementById('act-pro-price').textContent = _pricing.pro;
+  document.getElementById('act-biz-price').textContent = _pricing.business;
+
+  onActStatusChange();
+  openModal('m-activate');
+}
+
+function onActStatusChange() {
+  var st = document.getElementById('act-status').value;
+  var showDays = st !== 'expired';
+  document.getElementById('act-plan-row').style.display = showDays ? 'block' : 'none';
+  document.getElementById('act-days-row').style.display = showDays ? 'block' : 'none';
+  if (!showDays) document.getElementById('expiry-preview').textContent = '';
+}
+
+function setDays(n) {
+  document.getElementById('act-days').value = n;
+  updateExpiryPreview();
+}
+
+function updateExpiryPreview() {
+  var days = parseInt(document.getElementById('act-days').value) || 0;
+  if (days > 0) {
+    var end = new Date(Date.now() + days * 86400000);
+    document.getElementById('expiry-preview').textContent =
+      'মেয়াদ শেষ হবে: ' + end.toLocaleDateString('bn-BD');
+  } else {
+    document.getElementById('expiry-preview').textContent = '';
+  }
+}
+
+async function confirmActivation() {
+  var uid   = document.getElementById('act-uid').value;
+  var st    = document.getElementById('act-status').value;
+  var plan  = document.getElementById('act-plan').value;
+  var days  = parseInt(document.getElementById('act-days').value) || 0;
+  var note  = document.getElementById('act-note').value.trim();
+
+  if (st !== 'expired' && days <= 0) {
+    toast('⚠️ মেয়াদের দিন সংখ্যা দিন!'); return;
+  }
+
+  var now       = Date.now();
+  var paidUntil = st === 'active' ? now + days * 86400000 : 0;
+  var trialEnd  = st === 'trial'  ? now + days * 86400000 : 0;
+
+  var data = {
+    status: st, plan,
+    paidUntil, trialEnd,
+    activatedAt: now,
+    activatedBy: (A.getCurrentUser()||{}).email || 'admin',
+    lastNote: note
+  };
+
+  try {
+    await A.dbSetTenant(uid, data);
+
+    // Local update
+    var idx = _users.findIndex(x => (x.uid||x.id) === uid);
+    if (idx > -1) _users[idx] = Object.assign({}, _users[idx], data);
+
+    closeModal('m-activate');
+    toast('✅ সাবস্ক্রিপশন আপডেট হয়েছে!');
+    updateBadges();
+
+    var active = document.querySelector('.page.active');
+    if (active) {
+      var id = active.id.replace('sec-','');
+      if (id === 'dashboard') renderDashboard();
+      if (id === 'users')     renderUsersTable();
+      if (id === 'activate')  renderActivationSection();
+    }
+
+  } catch(e) {
+    toast('❌ সমস্যা: ' + e.message);
+  }
+}
+
+async function suspendUser(uid) {
+  if (!confirm('এই ইউজার সাসপেন্ড করবেন?')) return;
+  try {
+    await A.dbSetTenant(uid, {status:'suspended'});
+    var idx = _users.findIndex(x => (x.uid||x.id) === uid);
+    if (idx > -1) _users[idx].status = 'suspended';
+    toast('ইউজার সাসপেন্ড করা হয়েছে।');
+    renderUsersTable();
+    updateBadges();
+  } catch(e) { toast('❌ সমস্যা: ' + e.message); }
+}
+
+// ══ ইউজার সম্পূর্ণ ডিলিট (Firestore থেকে) ══
+async function deleteUser(uid, email) {
+  if (!confirm('"' + email + '" — এই ইউজারের সব Firestore ডেটা মুছবেন?\n\n(Firebase Auth থেকে আলাদাভাবে মুছতে হবে)')) return;
+  try {
+    // tenants_registry মুছো
+    await A.dbDelete('tenants_registry', uid);
+    // tenant subscription মুছো
+    await A.dbDelete('tenants/' + uid + '/subscription', 'main');
+    // Local list থেকেও সরাও
+    _users = _users.filter(x => (x.uid||x.id) !== uid);
+    toast('✅ "' + email + '" Firestore থেকে মুছা হয়েছে।');
+    updateBadges();
+    renderUsersTable();
+    renderDashboard();
+  } catch(e) { toast('❌ সমস্যা: ' + e.message); }
+}
+
+// ══ Orphan Cleanup — Firebase Auth-এ নেই কিন্তু Firestore-এ আছে ══
+async function cleanOrphans() {
+  toast('⏳ অ্যানালাইজ করা হচ্ছে...');
+  // orphan মানে: trialEnd ও paidUntil দুটোই ০ বা খুব পুরনো AND status নেই
+  var now = Date.now();
+  var orphans = _users.filter(u => {
+    var hasNoStatus = !u.status || u.status === '';
+    var isVeryOld   = u.createdAt && (now - u.createdAt) > 7 * 86400000;
+    var noExpiry    = !u.trialEnd && !u.paidUntil;
+    return hasNoStatus || (noExpiry && isVeryOld);
+  });
+
+  if (orphans.length === 0) {
+    toast('✅ কোনো orphan record নেই!');
+    return;
+  }
+
+  var list = orphans.map(u => '• ' + (u.email || u.id)).join('\n');
+  if (!confirm(orphans.length + ' টি orphan record পাওয়া গেছে:\n\n' + list + '\n\nএগুলো Firestore থেকে মুছবেন?')) return;
+
+  var deleted = 0;
+  for (var u of orphans) {
+    try {
+      await A.dbDelete('tenants_registry', u.uid || u.id);
+      deleted++;
+    } catch(e) { console.warn('Delete failed:', u.uid, e.message); }
+  }
+  _users = _users.filter(u => !orphans.find(o => (o.uid||o.id) === (u.uid||u.id)));
+  toast('✅ ' + deleted + ' টি orphan record মুছা হয়েছে।');
+  updateBadges();
+  renderUsersTable();
+  renderDashboard();
+}
+
+// ══════════════════════════════════════════════════
+// REVENUE
+// ══════════════════════════════════════════════════
+function renderRevenue() {
+  var activeUsers = _users.filter(u => getStatus(u) === 'active');
+  var monthly = activeUsers.reduce((s, u) => s + (_pricing[u.plan||'basic'] || _pricing.basic), 0);
+  var yearly  = monthly * 12;
+  var basic   = activeUsers.filter(u => (u.plan||'basic') === 'basic').length;
+  var pro     = activeUsers.filter(u => u.plan === 'pro').length;
+  var biz     = activeUsers.filter(u => u.plan === 'business').length;
+
+  document.getElementById('revenue-stats').innerHTML = `
+    <div class="stat-card sc-green"><div class="sc-icon"><i class="fa-solid fa-circle-dollar-to-slot"></i></div><h4>মাসিক আয় (প্রজেক্টেড)</h4><h2>৳${monthly.toLocaleString('en-IN')}</h2><small>${activeUsers.length} জন অ্যাক্টিভ</small></div>
+    <div class="stat-card sc-purple"><div class="sc-icon"><i class="fa-solid fa-calendar"></i></div><h4>বার্ষিক আয় (প্রজেক্টেড)</h4><h2>৳${yearly.toLocaleString('en-IN')}</h2><small>মাসিক × ১২</small></div>
+    <div class="stat-card sc-sky"><div class="sc-icon"><i class="fa-solid fa-layer-group"></i></div><h4>Basic প্ল্যান</h4><h2>${basic}</h2><small>৳${_pricing.basic} × ${basic} = ৳${(basic*_pricing.basic).toLocaleString()}</small></div>
+    <div class="stat-card sc-amber"><div class="sc-icon"><i class="fa-solid fa-star"></i></div><h4>Pro প্ল্যান</h4><h2>${pro}</h2><small>৳${_pricing.pro} × ${pro} = ৳${(pro*_pricing.pro).toLocaleString()}</small></div>
+    <div class="stat-card sc-pink"><div class="sc-icon"><i class="fa-solid fa-rocket"></i></div><h4>Business প্ল্যান</h4><h2>${biz}</h2><small>৳${_pricing.business} × ${biz} = ৳${(biz*_pricing.business).toLocaleString()}</small></div>
+  `;
+
+  // Revenue chart (monthly projection for 12 months)
+  var months = [];
+  for (var i = 0; i < 12; i++) {
+    var d = new Date(); d.setMonth(d.getMonth() - 11 + i);
+    months.push(new Intl.DateTimeFormat('bn-BD',{month:'short'}).format(d));
+  }
+  // Simulate progressive growth (actual data = current month)
+  var factor = activeUsers.length > 0 ? monthly : 0;
+  var revData = months.map((_, i) => i < 11 ? Math.round(factor * (0.6 + i * 0.04)) : factor);
+
+  if (_revChart) _revChart.destroy();
+  var rc = document.getElementById('revenueChart');
+  if (rc) _revChart = new Chart(rc.getContext('2d'), {
+    type: 'bar',
+    data: { labels: months, datasets: [{
+      label: 'আয় (৳)', data: revData,
+      backgroundColor: revData.map((_,i) => i === 11 ? '#059669' : '#a7f3d0'),
+      borderRadius: 6
+    }]},
+    options: { responsive:true, plugins:{legend:{display:false}}, scales:{y:{beginAtZero:true}} }
+  });
+
+  // Plan breakdown
+  document.getElementById('plan-breakdown').innerHTML = ['basic','pro','business'].map(p => {
+    var cnt = activeUsers.filter(u => (u.plan||'basic') === p).length;
+    var rev = cnt * _pricing[p];
+    var pct = activeUsers.length > 0 ? Math.round(cnt/activeUsers.length*100) : 0;
+    var colors = {basic:'var(--g1)',pro:'var(--g2)',business:'var(--g3)'};
+    return `<div style="display:flex;align-items:center;gap:14px;padding:12px 0;border-bottom:1px solid #f5f5f5">
+      <div style="width:12px;height:12px;border-radius:50%;background:${colors[p]};flex-shrink:0"></div>
+      <div style="flex:1">
+        <div style="font-weight:800;font-size:13px;text-transform:uppercase">${p} Plan</div>
+        <div style="background:#e5e7eb;border-radius:99px;height:5px;margin-top:5px;overflow:hidden">
+          <div style="height:5px;border-radius:99px;background:${colors[p]};width:${pct}%"></div>
+        </div>
+      </div>
+      <div style="text-align:right">
+        <div style="font-weight:800;color:${colors[p]}">৳${rev.toLocaleString()}/মাস</div>
+        <div style="font-size:11px;color:var(--muted)">${cnt} জন (${pct}%)</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ══════════════════════════════════════════════════
+// PRICING
+// ══════════════════════════════════════════════════
+function renderPricing() {
+  var plans = [
+    {key:'basic',   name:'Basic',    icon:'fa-layer-group', color:'#6366f1'},
+    {key:'pro',     name:'Pro',      icon:'fa-star',        color:'#8b5cf6'},
+    {key:'business',name:'Business', icon:'fa-rocket',      color:'#ec4899'},
+  ];
+  document.getElementById('pricing-grid').innerHTML = plans.map(p => `
+    <div class="price-card">
+      <div class="plan-name"><i class="fa-solid ${p.icon}" style="color:${p.color}"></i> ${p.name}</div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:8px">মাসিক মূল্য (৳)</div>
+      <input type="number" class="price-input" id="price-${p.key}" value="${_pricing[p.key]||0}" min="0" max="99999">
+    </div>`).join('');
+}
+
+async function savePricing() {
+  var newPricing = {
+    basic:    parseInt(document.getElementById('price-basic').value) || 0,
+    pro:      parseInt(document.getElementById('price-pro').value) || 0,
+    business: parseInt(document.getElementById('price-business').value) || 0,
+    updatedAt: Date.now(),
+    updatedBy: (A.getCurrentUser()||{}).email || 'admin'
+  };
+  try {
+    await A.dbSet('admin_config', 'pricing', newPricing, false);
+    _pricing = newPricing;
+    var msg = document.getElementById('pricing-msg');
+    msg.textContent = '✅ মূল্য সেভ হয়েছে!';
+    msg.style.background = '#d1fae5'; msg.style.color = '#059669';
+    msg.style.display = 'block';
+    setTimeout(() => msg.style.display = 'none', 3000);
+    toast('✅ প্রাইসিং আপডেট হয়েছে!');
+  } catch(e) { toast('❌ সমস্যা: ' + e.message); }
+}
+
+// ══════════════════════════════════════════════════
+// INFO
+// ══════════════════════════════════════════════════
+function renderInfo() {
+  var user = A.getCurrentUser();
+  var rows = [
+    ['Admin Email',    user ? user.email : '—'],
+    ['Firebase Project', A.FB_CONFIG.projectId],
+    ['Auth Domain',    A.FB_CONFIG.authDomain],
+    ['Admin Panel Version', 'v1.0.0'],
+    ['মোট ইউজার',      _users.length + ' জন'],
+    ['Active ইউজার',   _users.filter(u=>getStatus(u)==='active').length + ' জন'],
+    ['Last Refresh',   document.getElementById('last-refresh-lbl').textContent],
+    ['Allowed Admins', A.ADMIN_EMAILS.join(', ')],
+  ];
+  document.getElementById('info-content').innerHTML = rows.map(r =>
+    `<div class="info-row"><span class="lbl">${r[0]}</span><span class="val">${r[1]}</span></div>`
+  ).join('');
+}
+
+// ══════════════════════════════════════════════════
+// MODAL
+// ══════════════════════════════════════════════════
+function openModal(id)  { document.getElementById(id).classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+
+// Close on backdrop click
+document.querySelectorAll('.overlay').forEach(o => {
+  o.addEventListener('click', function(e) {
+    if (e.target === this) this.classList.remove('open');
+  });
+});
+
+// ══════════════════════════════════════════════════
+// TOAST
+// ══════════════════════════════════════════════════
+function toast(msg) {
+  var t = document.getElementById('toast');
+  t.textContent = msg;
+  t.style.opacity = '1';
+  clearTimeout(t._t);
+  t._t = setTimeout(() => t.style.opacity = '0', 2800);
+}
+</script>
+</body>
+</html>
